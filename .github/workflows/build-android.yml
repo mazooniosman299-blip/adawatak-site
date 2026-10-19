@@ -1,0 +1,128 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
+
+      - name: Prepare game files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for file in index.html style.css game.js; do
+            if [ ! -s "block-puzzle/$file" ]; then
+              echo "::error::Missing or empty file: block-puzzle/$file"
+              exit 1
+            fi
+          done
+
+          APP_DIR="$RUNNER_TEMP/block-party"
+          mkdir -p "$APP_DIR/www"
+
+          cp block-puzzle/index.html "$APP_DIR/www/"
+          cp block-puzzle/style.css "$APP_DIR/www/"
+          cp block-puzzle/game.js "$APP_DIR/www/"
+
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+      - name: Create Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          npm init -y
+          npm install --save-exact @capacitor/core@8.5.3 @capacitor/cli@8.5.3 @capacitor/android@8.5.3
+
+          npx cap init "بلوك بارتي" "com.blockparty.puzzle" --web-dir www
+          npx cap add android
+          npx cap sync android
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR/android"
+
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+
+          cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" "$GITHUB_WORKSPACE/apk-output/app-debug.apk"
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$GITHUB_WORKSPACE/apk-output/app-debug.apk"
+
+          cd "$GITHUB_WORKSPACE/apk-output"
+          sha256sum app-debug.apk > SHA256SUMS.txt
+
+      - name: Save APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: block-party-apk
+          path: apk-output/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          TAG="android-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+
+          printf '%s\n' \
+            'لعبة بلوك بارتي لأندرويد.' \
+            '' \
+            'Android 7.0 فأحدث.' \
+            'نسخة تجريبية موقّعة بمفتاح Debug.' \
+            'الإعلانات غير مفعّلة.' \
+            > "$RUNNER_TEMP/release-notes.md"
+
+          gh release create "$TAG" \
+            "$GITHUB_WORKSPACE/apk-output/app-debug.apk" \
+            "$GITHUB_WORKSPACE/apk-output/SHA256SUMS.txt" \
+            --target "$GITHUB_SHA" \
+            --title "بلوك بارتي — $TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/app-debug.apk"
+
+          echo "## Download APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "$DOWNLOAD_URL" >> "$GITHUB_STEP_SUMMARY"
