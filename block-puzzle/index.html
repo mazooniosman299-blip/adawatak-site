@@ -1,143 +1,103 @@
-name: Build Android APK
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover"
+  >
+  <meta name="theme-color" content="#171638">
+  <title>بلوك بارتي — لعبة المكعبات</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game">
+    <header>
+      <span class="eyebrow">وقت صغير · تحدٍ كبير</span>
+      <h1>بلوك <span>بارتي</span> ✦</h1>
+      <p>رتّب المكعبات… واصنع مساحة للمزيد!</p>
+    </header>
 
-on:
-  workflow_dispatch:
+    <section class="toolbar" aria-label="نتائج اللعبة">
+      <div class="stat">
+        <span>النقاط</span>
+        <strong id="score">0</strong>
+      </div>
 
-permissions:
-  contents: write
+      <button
+        id="restart"
+        class="icon-button"
+        aria-label="بدء لعبة جديدة"
+        title="لعبة جديدة"
+      >↻</button>
 
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+      <div class="stat best">
+        <span>♛ أعلى نتيجة</span>
+        <strong id="best">0</strong>
+      </div>
+    </section>
 
-    steps:
-      - name: Download repository
-        uses: actions/checkout@v4
+    <div class="board-wrap">
+      <div
+        id="board"
+        class="board"
+        role="group"
+        aria-label="لوحة اللعب: 8 صفوف و8 أعمدة"
+      ></div>
+      <div id="celebration" aria-hidden="true"></div>
+    </div>
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+    <p
+      id="status"
+      class="status"
+      role="status"
+      aria-live="polite"
+    >جارٍ تحميل اللعبة…</p>
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
+    <noscript>
+      تحتاج اللعبة إلى تفعيل JavaScript في المتصفح.
+    </noscript>
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+    <section
+      id="tray"
+      class="tray"
+      aria-label="القطع المتاحة"
+    ></section>
 
-      - name: Install Android build tools
-        run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;35.0.0" \
-            "build-tools;36.0.0"
+    <p class="hint">
+      أكمل صفًا أو عمودًا لإزالته ✨
+      <br>
+      استخدم القطع الثلاث لتحصل على مجموعة جديدة
+    </p>
 
-      - name: Prepare game files
-        shell: bash
-        run: |
-          set -euo pipefail
+    <aside
+      id="ad-banner"
+      class="ad-banner"
+      aria-label="مساحة إعلان"
+    >
+      <span>إعلان</span>
+      <span>مساحة البانر</span>
+    </aside>
 
-          for file in index.html style.css game.js; do
-            if [ ! -s "block-puzzle/$file" ]; then
-              echo "::error::Missing or empty file: block-puzzle/$file"
-              exit 1
-            fi
-          done
+    <footer>
+      استراحة ملونة لعقلك <span>✦</span>
+    </footer>
+  </main>
 
-          APP_DIR="$RUNNER_TEMP/block-party"
-          mkdir -p "$APP_DIR/www"
+  <dialog id="game-over" aria-labelledby="over-title">
+    <div class="modal-icon">✦</div>
+    <h2 id="over-title">جولة جميلة!</h2>
+    <p>لم تعد هناك مساحة للقطع المتبقية.</p>
 
-          cp block-puzzle/index.html "$APP_DIR/www/"
-          cp block-puzzle/style.css "$APP_DIR/www/"
-          cp block-puzzle/game.js "$APP_DIR/www/"
+    <span class="final-label">نتيجتك</span>
+    <strong id="final-score">0</strong>
+    <p id="record-note"></p>
 
-          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+    <button id="play-again" class="primary">
+      لنلعب مرة أخرى ↻
+    </button>
+  </dialog>
 
-      - name: Create Android project
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$APP_DIR"
-
-          npm init -y
-
-          npm install --save-exact \
-            @capacitor/core@8.5.3 \
-            @capacitor/cli@8.5.3 \
-            @capacitor/android@8.5.3
-
-          npx cap init \
-            "بلوك بارتي" \
-            "com.blockparty.puzzle" \
-            --web-dir www
-
-          npx cap add android
-          npx cap sync android
-
-      - name: Build APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$APP_DIR/android"
-
-          chmod +x gradlew
-          ./gradlew :app:assembleDebug \
-            --no-daemon \
-            --max-workers=2
-
-      - name: Verify APK and prepare download
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p "$GITHUB_WORKSPACE/apk-output"
-
-          cp \
-            "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" \
-            "$GITHUB_WORKSPACE/apk-output/app-debug.apk"
-
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
-            verify --verbose \
-            "$GITHUB_WORKSPACE/apk-output/app-debug.apk"
-
-          cd "$GITHUB_WORKSPACE/apk-output"
-          sha256sum app-debug.apk > SHA256SUMS.txt
-
-      - name: Publish GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          TAG="android-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
-
-          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
-          لعبة بلوك بارتي لأندرويد.
-
-          - Android 7.0 فأحدث.
-          - APK تجريبي موقّع بمفتاح Debug.
-          - الإعلانات مواضع جاهزة للربط وليست مفعّلة.
-          - تم بناء الملف آليًا والتحقق من توقيعه.
-          EOF
-
-          gh release create "$TAG" \
-            "$GITHUB_WORKSPACE/apk-output/app-debug.apk" \
-            "$GITHUB_WORKSPACE/apk-output/SHA256SUMS.txt" \
-            --target "$GITHUB_SHA" \
-            --title "بلوك بارتي — Android $TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
-
-          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/app-debug.apk"
-
-          {
-            echo "## Android APK"
-            echo ""
-            echo "[Download app-debug.apk]($DOWNLOAD_URL)"
-          } >> "$GITHUB_STEP_SUMMARY"
+  <script src="game.js"></script>
+</body>
+</html>
