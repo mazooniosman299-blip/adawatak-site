@@ -56,7 +56,7 @@ jobs:
           npm init -y
           npm install --save-exact @capacitor/core@8.5.3 @capacitor/cli@8.5.3 @capacitor/android@8.5.3 @capacitor-community/admob@8.2.1 esbuild@0.25.12
 
-      - name: Add test advertisements
+      - name: Configure AdMob units (test mode)
         shell: bash
         run: |
           set -euo pipefail
@@ -73,9 +73,9 @@ jobs:
             InterstitialAdPluginEvents
           } from '@capacitor-community/admob';
 
-          // Google demo units only. This build does not earn revenue.
-          const BANNER = 'ca-app-pub-3940256099942544/6300978111';
-          const INTERSTITIAL = 'ca-app-pub-3940256099942544/1033173712';
+          // Account ad units. Debug builds remain in test mode and do not earn revenue.
+          const BANNER = 'ca-app-pub-5086201923236113/6484365837';
+          const INTERSTITIAL = 'ca-app-pub-5086201923236113/4763345196';
 
           let adStage = 'consent';
           let initialized = false;
