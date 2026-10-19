@@ -320,12 +320,12 @@ jobs:
           cd "$APP_DIR/android"
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           chmod 600 "$RUNNER_TEMP/release.jks"
-          export ORG_GRADLE_PROJECT_android.injected.signing.store.file="$RUNNER_TEMP/release.jks"
-          export ORG_GRADLE_PROJECT_android.injected.signing.store.password="$RELEASE_STORE_PASSWORD"
-          export ORG_GRADLE_PROJECT_android.injected.signing.key.alias="$RELEASE_KEY_ALIAS"
-          export ORG_GRADLE_PROJECT_android.injected.signing.key.password="$RELEASE_KEY_PASSWORD"
           chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon --max-workers=2
+          ./gradlew :app:assembleRelease --no-daemon --max-workers=2 \
+            "-Pandroid.injected.signing.store.file=$RUNNER_TEMP/release.jks" \
+            "-Pandroid.injected.signing.store.password=$RELEASE_STORE_PASSWORD" \
+            "-Pandroid.injected.signing.key.alias=$RELEASE_KEY_ALIAS" \
+            "-Pandroid.injected.signing.key.password=$RELEASE_KEY_PASSWORD"
           test -s app/build/outputs/apk/release/app-release.apk
 
       - name: Verify and upload release
